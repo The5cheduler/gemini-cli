@@ -31,6 +31,16 @@
     "onStartupFinished"
   ],
   "contributes": {
+    "configuration": {
+      "title": "Gemini CLI",
+      "properties": {
+        "mcpServers": {
+          "type": "object",
+          "description": "A map of MCP server configurations, where the key is the server name.",
+          "default": {}
+        }
+      }
+    },
     "languages": [
       {
         "id": "gemini-diff-editable"

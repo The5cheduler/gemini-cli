@@ -181,13 +181,13 @@ exports[`SettingsDialog > Snapshot Tests > should render with different scope se
 │ > Settings                                                                                       │
 │                                                                                                  │
 │ ▲                                                                                                │
-│ ● Vim Mode (Modified in Workspace)                     false                                     │
+│ ● Vim Mode                                             false                                     │
 │                                                                                                  │
 │   Disable Auto Update                                  false                                     │
 │                                                                                                  │
 │   Enable Prompt Completion                             false                                     │
 │                                                                                                  │
-│   Debug Keystroke Logging (Modified in Workspace)      false                                     │
+│   Debug Keystroke Logging                              false                                     │
 │                                                                                                  │
 │   Output Format                                        Text                                      │
 │                                                                                                  │

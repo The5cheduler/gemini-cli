@@ -35,6 +35,10 @@ vi.mock('./trustedFolders.js', () => ({
     .mockReturnValue({ isTrusted: true, source: 'file' }),
 }));
 
+vi.mock('./vscode.js', () => ({
+  readVscodeSettings: vi.fn(),
+}));
+
 // NOW import everything else, including the (now effectively re-exported) settings.js
 import path, * as pathActual from 'node:path'; // Restored for MOCK_WORKSPACE_SETTINGS_PATH
 import {
@@ -52,6 +56,7 @@ import * as fs from 'node:fs'; // fs will be mocked separately
 import stripJsonComments from 'strip-json-comments'; // Will be mocked separately
 import { isWorkspaceTrusted } from './trustedFolders.js';
 import { disableExtension } from './extension.js';
+import { readVscodeSettings } from './vscode.js';
 
 // These imports will get the versions from the vi.mock('./settings.js', ...) factory.
 import {
@@ -107,6 +112,7 @@ describe('Settings Loading and Merging', () => {
   let mockFsExistsSync: Mocked<typeof fs.existsSync>;
   let mockStripJsonComments: Mocked<typeof stripJsonComments>;
   let mockFsMkdirSync: Mocked<typeof fs.mkdirSync>;
+  let mockReadVscodeSettings: Mocked<typeof readVscodeSettings>;
 
   beforeEach(() => {
     vi.resetAllMocks();
@@ -114,6 +120,7 @@ describe('Settings Loading and Merging', () => {
     mockFsExistsSync = vi.mocked(fs.existsSync);
     mockFsMkdirSync = vi.mocked(fs.mkdirSync);
     mockStripJsonComments = vi.mocked(stripJsonComments);
+    mockReadVscodeSettings = vi.mocked(readVscodeSettings);
 
     vi.mocked(osActual.homedir).mockReturnValue('/mock/home/user');
     (mockStripJsonComments as unknown as Mock).mockImplementation(
@@ -126,6 +133,7 @@ describe('Settings Loading and Merging', () => {
       isTrusted: true,
       source: 'file',
     });
+    mockReadVscodeSettings.mockReturnValue(null);
   });
 
   afterEach(() => {
@@ -1051,6 +1059,90 @@ describe('Settings Loading and Merging', () => {
       expect(settings.merged.mcp).toEqual({
         allowed: ['system-allowed'],
         excluded: ['workspace-excluded'],
+      });
+    });
+
+    it('should merge vscode settings with the correct precedence', () => {
+      (mockFsExistsSync as Mock).mockImplementation(
+        (p: fs.PathLike) =>
+          p === USER_SETTINGS_PATH || p === MOCK_WORKSPACE_SETTINGS_PATH,
+      );
+
+      const vscodeSettingsContent = {
+        mcpServers: {
+          'vscode-server': {
+            command: 'vscode-command',
+            args: ['--vscode-arg'],
+            description: 'VS Code MCP server',
+          },
+          'shared-server': {
+            command: 'vscode-shared-command',
+            description: 'VS Code shared server config',
+          },
+        },
+      };
+
+      const userSettingsContent = {
+        mcpServers: {
+          'user-server': {
+            command: 'user-command',
+            args: ['--user-arg'],
+            description: 'User MCP server',
+          },
+          'shared-server': {
+            command: 'user-shared-command',
+            description: 'User shared server config',
+          },
+        },
+      };
+
+      const workspaceSettingsContent = {
+        mcpServers: {
+          'workspace-server': {
+            command: 'workspace-command',
+            args: ['--workspace-arg'],
+            description: 'Workspace MCP server',
+          },
+          'shared-server': {
+            command: 'workspace-shared-command',
+            description: 'Workspace shared server config',
+          },
+        },
+      };
+
+      mockReadVscodeSettings.mockReturnValue(vscodeSettingsContent);
+      (fs.readFileSync as Mock).mockImplementation(
+        (p: fs.PathOrFileDescriptor) => {
+          if (p === USER_SETTINGS_PATH)
+            return JSON.stringify(userSettingsContent);
+          if (p === MOCK_WORKSPACE_SETTINGS_PATH)
+            return JSON.stringify(workspaceSettingsContent);
+          return '';
+        },
+      );
+
+      const settings = loadSettings(MOCK_WORKSPACE_DIR);
+
+      expect(settings.merged.mcpServers).toEqual({
+        'vscode-server': {
+          command: 'vscode-command',
+          args: ['--vscode-arg'],
+          description: 'VS Code MCP server',
+        },
+        'user-server': {
+          command: 'user-command',
+          args: ['--user-arg'],
+          description: 'User MCP server',
+        },
+        'workspace-server': {
+          command: 'workspace-command',
+          args: ['--workspace-arg'],
+          description: 'Workspace MCP server',
+        },
+        'shared-server': {
+          command: 'workspace-shared-command',
+          description: 'Workspace shared server config',
+        },
       });
     });
 

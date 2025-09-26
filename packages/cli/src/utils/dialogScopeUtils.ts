@@ -39,12 +39,18 @@ export function getScopeMessageForSetting(
   selectedScope: SettingScope,
   settings: LoadedSettings,
 ): string {
-  const otherScopes = Object.values(SettingScope).filter(
-    (scope) => scope !== selectedScope,
-  );
+  const otherScopes = [
+    SettingScope.User,
+    SettingScope.Workspace,
+    SettingScope.System,
+  ].filter((scope) => scope !== selectedScope);
 
   const modifiedInOtherScopes = otherScopes.filter((scope) => {
-    const scopeSettings = settings.forScope(scope).settings;
+    const scopeFile = settings.forScope(scope);
+    if (!scopeFile || !scopeFile.settings) {
+      return false;
+    }
+    const scopeSettings = scopeFile.settings;
     return settingExistsInScope(settingKey, scopeSettings);
   });
 

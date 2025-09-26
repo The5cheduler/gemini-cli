@@ -31,6 +31,7 @@ import { resolveEnvVarsInObject } from '../utils/envVarResolver.js';
 import { customDeepMerge, type MergeableObject } from '../utils/deepMerge.js';
 import { updateSettingsFilePreservingFormat } from '../utils/commentJson.js';
 import { disableExtension } from './extension.js';
+import { readVscodeSettings } from './vscode.js';
 
 function getMergeStrategyForPath(path: string[]): MergeStrategy | undefined {
   let current: SettingDefinition | undefined = undefined;
@@ -154,6 +155,7 @@ export enum SettingScope {
   Workspace = 'Workspace',
   System = 'System',
   SystemDefaults = 'SystemDefaults',
+  Vscode = 'Vscode',
 }
 
 export interface CheckpointingSettings {
@@ -353,6 +355,7 @@ function mergeSettings(
   system: Settings,
   systemDefaults: Settings,
   user: Settings,
+  vscode: Settings,
   workspace: Settings,
   isTrusted: boolean,
 ): Settings {
@@ -361,13 +364,15 @@ function mergeSettings(
   // Settings are merged with the following precedence (last one wins for
   // single values):
   // 1. System Defaults
-  // 2. User Settings
-  // 3. Workspace Settings
-  // 4. System Settings (as overrides)
+  // 2. VS Code Settings
+  // 3. User Settings
+  // 4. Workspace Settings
+  // 5. System Settings (as overrides)
   return customDeepMerge(
     getMergeStrategyForPath,
     {}, // Start with an empty object
     systemDefaults,
+    vscode,
     user,
     safeWorkspace,
     system,
@@ -379,6 +384,7 @@ export class LoadedSettings {
     system: SettingsFile,
     systemDefaults: SettingsFile,
     user: SettingsFile,
+    vscode: SettingsFile,
     workspace: SettingsFile,
     isTrusted: boolean,
     migratedInMemorScopes: Set<SettingScope>,
@@ -386,6 +392,7 @@ export class LoadedSettings {
     this.system = system;
     this.systemDefaults = systemDefaults;
     this.user = user;
+    this.vscode = vscode;
     this.workspace = workspace;
     this.isTrusted = isTrusted;
     this.migratedInMemorScopes = migratedInMemorScopes;
@@ -395,6 +402,7 @@ export class LoadedSettings {
   readonly system: SettingsFile;
   readonly systemDefaults: SettingsFile;
   readonly user: SettingsFile;
+  readonly vscode: SettingsFile;
   readonly workspace: SettingsFile;
   readonly isTrusted: boolean;
   readonly migratedInMemorScopes: Set<SettingScope>;
@@ -410,6 +418,7 @@ export class LoadedSettings {
       this.system.settings,
       this.systemDefaults.settings,
       this.user.settings,
+      this.vscode.settings,
       this.workspace.settings,
       this.isTrusted,
     );
@@ -425,12 +434,17 @@ export class LoadedSettings {
         return this.system;
       case SettingScope.SystemDefaults:
         return this.systemDefaults;
+      case SettingScope.Vscode:
+        return this.vscode;
       default:
         throw new Error(`Invalid scope: ${scope}`);
     }
   }
 
   setValue(scope: SettingScope, key: string, value: unknown): void {
+    if (scope === SettingScope.Vscode) {
+      throw new Error('Cannot set values in VS Code settings scope.');
+    }
     const settingsFile = this.forScope(scope);
     setNestedProperty(settingsFile.settings, key, value);
     setNestedProperty(settingsFile.originalSettings, key, value);
@@ -678,10 +692,14 @@ export function loadSettings(
     isWorkspaceTrusted(initialTrustCheckSettings as Settings).isTrusted ?? true;
 
   // Create a temporary merged settings object to pass to loadEnvironment.
+  const vscodeSettings = (readVscodeSettings() as Settings) || {};
+
+  // Create a temporary merged settings object to pass to loadEnvironment.
   const tempMergedSettings = mergeSettings(
     systemSettings,
     systemDefaultSettings,
     userSettings,
+    vscodeSettings,
     workspaceSettings,
     isTrusted,
   );
@@ -719,6 +737,12 @@ export function loadSettings(
       settings: userSettings,
       originalSettings: userOriginalSettings,
       rawJson: userResult.rawJson,
+    },
+    {
+      path: 'vscode://settings.json',
+      settings: vscodeSettings,
+      originalSettings: structuredClone(vscodeSettings),
+      rawJson: JSON.stringify(vscodeSettings, null, 2),
     },
     {
       path: workspaceSettingsPath,
